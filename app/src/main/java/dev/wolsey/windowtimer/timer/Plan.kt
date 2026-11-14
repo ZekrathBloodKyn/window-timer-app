@@ -6,9 +6,6 @@ import dev.wolsey.windowtimer.data.db.WindowType
 import dev.wolsey.windowtimer.data.paceFor
 import kotlin.math.roundToLong
 
-/** Quarter marks as fractions of the total time. */
-val QUARTERS = listOf(0.25, 0.50, 0.75, 1.00)
-
 /** A quarter mark's time in milliseconds, rounded to a whole second. */
 fun markMillis(total: Long, fraction: Double): Long =
     (total * fraction / 1000.0).roundToLong() * 1000L
@@ -55,4 +52,27 @@ fun totalMillis(counts: List<TypeCount>, types: List<WindowType>, crew: List<Per
         interiorHours + exteriorHours
     }
     return (hours * 3600.0).roundToLong() * 1000L
+}
+
+/**
+ * The part of the estimate that's interior work. The rest, `totalMillis(...) - this`, is
+ * exterior. Uses the same paces as the crew estimate.
+ */
+fun interiorMillis(counts: List<TypeCount>, types: List<WindowType>, crew: List<Person>): Long {
+    val standard = types.firstOrNull { it.isStandard }
+
+    fun pace(type: WindowType, interior: Boolean): Double =
+        if (crew.isEmpty() || standard == null) {
+            (if (interior) type.interiorPace else type.exteriorPace).toDouble()
+        } else {
+            crew.sumOf { it.paceFor(type, interior, standard) }
+        }
+
+    var hours = 0.0
+    for (c in counts) {
+        val type = types.firstOrNull { it.id == c.typeId } ?: standard ?: continue
+        if (c.interior > 0) hours += c.interior / pace(type, true)
+    }
+    val total = totalMillis(counts, types, crew)
+    return ((hours * 3600.0).roundToLong() * 1000L).coerceIn(0L, total)
 }

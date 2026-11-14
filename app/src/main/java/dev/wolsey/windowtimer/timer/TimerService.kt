@@ -42,6 +42,7 @@ class TimerService : Service() {
         const val EXTRA_BREAKDOWN = "breakdown"
         const val EXTRA_DONE_BREAKDOWN = "done_breakdown"
         const val EXTRA_DONE_CREW = "done_crew"
+        const val EXTRA_INTERIOR_MS = "interior_ms"
 
         private const val CHANNEL_ID = "timer"
         private const val NOTIFICATION_ID = 1
@@ -56,6 +57,7 @@ class TimerService : Service() {
         @Volatile var firedCount = 0
         @Volatile var paused = false
         @Volatile private var pausedElapsedMs = 0L
+        @Volatile var marks: List<Mark> = emptyList()
 
         fun elapsedMs(): Long = when {
             !running -> 0L
@@ -96,6 +98,7 @@ class TimerService : Service() {
                 if (!running) plannedBreakdown = intent.getStringExtra(EXTRA_BREAKDOWN).orEmpty()
                 start(
                     total = intent.getLongExtra(EXTRA_TOTAL_MS, 0L),
+                    interiorMs = intent.getLongExtra(EXTRA_INTERIOR_MS, 0L),
                     name = intent.getStringExtra(EXTRA_JOB_NAME).orEmpty(),
                     interior = intent.getIntExtra(EXTRA_INTERIOR, 0),
                     exterior = intent.getIntExtra(EXTRA_EXTERIOR, 0)
@@ -110,11 +113,13 @@ class TimerService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun start(total: Long, name: String, interior: Int, exterior: Int) {
+    private fun start(total: Long, interiorMs: Long, name: String, interior: Int, exterior: Int) {
         if (total <= 0 || running) return
 
         handler.removeCallbacksAndMessages(null)
         totalMs = total
+        // Fixed for the whole run, so changing settings mid-run can't shift the alerts.
+        marks = buildMarks(total, interiorMs, IntervalSettings.load(this))
         jobName = name
         interiorCount = interior
         exteriorCount = exterior
@@ -132,8 +137,8 @@ class TimerService : Service() {
 
         startForeground(NOTIFICATION_ID, buildNotification("Timer running"))
 
-        QUARTERS.forEachIndexed { index, fraction ->
-            handler.postDelayed({ fire(index) }, markMillis(total, fraction))
+        marks.forEachIndexed { index, mark ->
+            handler.postDelayed({ fire(index) }, mark.timeMs)
         }
     }
 
@@ -163,13 +168,13 @@ class TimerService : Service() {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "windowtimer:run")
             .apply { acquire(totalMs + MAX_RUN_MS) }
 
-        // Reschedule the quarters that haven't fired yet.
-        for (index in firedCount until QUARTERS.size) {
-            val delay = (markMillis(totalMs, QUARTERS[index]) - elapsed).coerceAtLeast(0L)
+        // Reschedule the alerts that haven't fired yet.
+        for (index in firedCount until marks.size) {
+            val delay = (marks[index].timeMs - elapsed).coerceAtLeast(0L)
             handler.postDelayed({ fire(index) }, delay)
         }
-        // Already past 100%: restart the overtime notification updates.
-        if (firedCount >= QUARTERS.size) handler.postDelayed(overtimeTick, OVERTIME_UPDATE_MS)
+        // Already past the last alert: restart the overtime notification updates.
+        if (firedCount >= marks.size) handler.postDelayed(overtimeTick, OVERTIME_UPDATE_MS)
 
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, buildNotification("Timer running"))
@@ -187,18 +192,18 @@ class TimerService : Service() {
 
     private fun fire(index: Int) {
         if (!running) return
+        val mark = marks.getOrNull(index) ?: return
         firedCount = index + 1
 
         // Read settings now, so changes made during a run take effect.
-        val config = AlertSettings.load(this)[index]
-        if (config.enabled) Alerts.play(this, index, config)
+        val config = AlertSettings.load(this)[mark.sound]
+        if (config.enabled) Alerts.play(this, mark.sound, config)
 
-        val pct = (QUARTERS[index] * 100).toInt()
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification("$pct% of estimated time"))
+            .notify(NOTIFICATION_ID, buildNotification("${mark.label} of estimated time"))
 
-        // The timer keeps running after 100% as overtime, until Finish or Cancel.
-        if (index == QUARTERS.lastIndex) {
+        // The timer keeps running after the last alert as overtime, until Finish or Cancel.
+        if (index == marks.lastIndex) {
             handler.postDelayed(overtimeTick, OVERTIME_UPDATE_MS)
         }
     }

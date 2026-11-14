@@ -59,11 +59,13 @@ import dev.wolsey.windowtimer.data.store.JobStore
 import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.store.TypeStore
 import dev.wolsey.windowtimer.data.store.VisitStore
-import dev.wolsey.windowtimer.timer.QUARTERS
+import dev.wolsey.windowtimer.timer.IntervalSettings
+import dev.wolsey.windowtimer.timer.Mark
 import dev.wolsey.windowtimer.timer.TimerService
+import dev.wolsey.windowtimer.timer.buildMarks
 import dev.wolsey.windowtimer.timer.formatClock
 import dev.wolsey.windowtimer.timer.formatCountdown
-import dev.wolsey.windowtimer.timer.markMillis
+import dev.wolsey.windowtimer.timer.interiorMillis
 import dev.wolsey.windowtimer.timer.totalMillis
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,6 +102,7 @@ fun TimerScreen(
     var paused by remember { mutableStateOf(TimerService.paused) }
     var elapsed by remember { mutableLongStateOf(0L) }
     var serviceTotal by remember { mutableLongStateOf(0L) }
+    var serviceMarks by remember { mutableStateOf<List<Mark>>(emptyList()) }
     var fired by remember { mutableIntStateOf(TimerService.firedCount) }
 
     // Window types, people, and the open visit for the job name that's entered.
@@ -131,6 +134,7 @@ fun TimerScreen(
             paused = TimerService.paused
             elapsed = TimerService.elapsedMs()
             serviceTotal = TimerService.totalMs
+            serviceMarks = TimerService.marks
             fired = TimerService.firedCount
             delay(250)
         }
@@ -164,6 +168,11 @@ fun TimerScreen(
     val exteriorCount = Breakdown.totalExterior(counts)
     val total = if (running) serviceTotal else totalMillis(counts, types, crew)
     val canStart = total > 0
+
+    // While running, the alerts are the ones the service was started with.
+    val plan = remember { IntervalSettings.load(context) }
+    val interiorMs = interiorMillis(counts, types, crew)
+    val marks = if (running) serviceMarks else buildMarks(total, interiorMs, plan)
 
     val resetChecks = {
         TimerService.resetFired()
@@ -352,7 +361,7 @@ fun TimerScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            QUARTERS.forEachIndexed { index, fraction ->
+            marks.forEachIndexed { index, mark ->
                 val done = fired > index
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -360,10 +369,10 @@ fun TimerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${if (done) "✓" else "·"}  ${(fraction * 100).toInt()}%",
+                        text = "${if (done) "✓" else "·"}  ${mark.label}",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    val markMs = markMillis(total, fraction)
+                    val markMs = mark.timeMs
                     val remaining = markMs - elapsed
 
                     Text(
@@ -433,6 +442,7 @@ fun TimerScreen(
                             .putExtra(TimerService.EXTRA_INTERIOR, interiorCount)
                             .putExtra(TimerService.EXTRA_EXTERIOR, exteriorCount)
                             .putExtra(TimerService.EXTRA_BREAKDOWN, Breakdown.encode(counts))
+                            .putExtra(TimerService.EXTRA_INTERIOR_MS, interiorMs)
                     )
                 },
                 enabled = canStart,

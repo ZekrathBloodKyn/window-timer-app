@@ -8,14 +8,19 @@ import dev.wolsey.windowtimer.data.TypeCount
 import dev.wolsey.windowtimer.data.TypePace
 import dev.wolsey.windowtimer.data.TypePaces
 import dev.wolsey.windowtimer.data.db.Run
+import dev.wolsey.windowtimer.data.db.Visit
 import dev.wolsey.windowtimer.data.db.WindowType
 import dev.wolsey.windowtimer.data.paceFor
 import dev.wolsey.windowtimer.data.routing.RouteOptimizer
 import dev.wolsey.windowtimer.data.routing.parseCoordinates
 import dev.wolsey.windowtimer.data.summarize
+import dev.wolsey.windowtimer.timer.IntervalPlan
+import dev.wolsey.windowtimer.timer.buildMarks
 import dev.wolsey.windowtimer.timer.formatClock
 import dev.wolsey.windowtimer.timer.formatCountdown
+import dev.wolsey.windowtimer.timer.interiorMillis
 import dev.wolsey.windowtimer.timer.markMillis
+import dev.wolsey.windowtimer.timer.soundStage
 import dev.wolsey.windowtimer.timer.totalMillis
 import dev.wolsey.windowtimer.ui.history.TimeFramePreset
 import dev.wolsey.windowtimer.ui.history.timeRangeFor
@@ -258,6 +263,7 @@ class PlanAndBreakdownTest {
         assertEquals(13.0, me.overallPace!!, 0.001)    // 26 windows in 2 h
     }
 
+    @Suppress("SameParameterValue")
     private fun day(y: Int, m: Int, d: Int) =
         LocalDate.of(y, m, d).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
@@ -335,5 +341,118 @@ class PlanAndBreakdownTest {
         assertEquals(null, parseCoordinates("95, 10"))       // latitude out of range
         assertEquals(null, parseCoordinates("40, 200"))      // longitude out of range
         assertEquals(null, parseCoordinates("Spanish Fork"))
+    }
+
+    @Test
+    fun onSitePaceUsesVisitTimeAndCountsEachVisitOnce() {
+        val twoHours = 2 * 3_600_000L
+        val visit = Visit("A", arrivedAt = 0L, departedAt = twoHours, id = 5)
+        val run = crewRun().copy(visitId = 5)
+
+        // 24 windows over 2 hours on site
+        val one = summarize(listOf(run), null, 1, mapOf(5L to visit))!!
+        assertEquals(12.0, one.visitPace!!, 0.001)
+
+        // Two runs in the same visit: 48 windows, and the 2 hours count once
+        val two = summarize(listOf(run, run.copy(id = 2)), null, 1, mapOf(5L to visit))!!
+        assertEquals(24.0, two.visitPace!!, 0.001)
+
+        // One person's share: Sam did 10 of the 24
+        val sam = summarize(listOf(run), 2L, 1, mapOf(5L to visit))!!
+        assertEquals(5.0, sam.visitPace!!, 0.001)
+    }
+
+    @Test
+    fun onSitePaceIsMissingWithoutAFinishedVisit() {
+        val open = Visit("A", arrivedAt = 0L, departedAt = null, id = 5)
+        val run = crewRun().copy(visitId = 5)
+        assertEquals(null, summarize(listOf(run), null, 1, mapOf(5L to open))!!.visitPace)
+        assertEquals(null, summarize(listOf(run), null, 1)!!.visitPace)
+    }
+
+    private val hour = 3_600_000L
+
+    @Test
+    fun defaultIntervalsAreTheQuarters() {
+        val marks = buildMarks(hour, 0L, IntervalPlan())
+        assertEquals(listOf(900_000L, 1_800_000L, 2_700_000L, hour), marks.map { it.timeMs })
+        assertEquals(listOf("25%", "50%", "75%", "100%"), marks.map { it.label })
+        assertEquals(listOf(0, 1, 2, 3), marks.map { it.sound })
+    }
+
+    @Test
+    fun soundStagesSpreadAcrossEarlyMiddleAndLate() {
+        assertEquals(listOf(0, 0, 0, 1, 1, 1, 2, 2, 2, 3), (1..10).map { soundStage(it, 10) })
+        assertEquals(listOf(3), (1..1).map { soundStage(it, 1) })
+        assertEquals(listOf(0, 3), (1..2).map { soundStage(it, 2) })
+    }
+
+    @Test
+    fun anyNumberOfIntervalsIsEvenlySpaced() {
+        val marks = buildMarks(hour, 0L, IntervalPlan(count = 6))
+        assertEquals(6, marks.size)
+        assertEquals(hour, marks.last().timeMs)
+        assertEquals(600_000L, marks[0].timeMs)
+        assertEquals(1_200_000L, marks[1].timeMs)
+    }
+
+    @Test
+    fun separateGroupsRunOneAfterTheOther() {
+        val plan = IntervalPlan(separate = true, interiorCount = 2, exteriorCount = 4)
+        val marks = buildMarks(3 * hour, hour, plan)   // 1 h interior, 2 h exterior
+
+        assertEquals(
+            listOf("Interior 50%", "Interior 100%", "Exterior 25%", "Exterior 50%", "Exterior 75%", "Exterior 100%"),
+            marks.map { it.label }
+        )
+        assertEquals(
+            listOf(1_800_000L, hour, hour + 1_800_000L, 2 * hour, 2 * hour + 1_800_000L, 3 * hour),
+            marks.map { it.timeMs }
+        )
+        assertEquals(4, marks[1].sound)          // end of the first part: "part complete"
+        assertEquals(3, marks.last().sound)      // end of the job: final
+    }
+
+    @Test
+    fun exteriorCanGoFirst() {
+        val plan = IntervalPlan(separate = true, interiorCount = 1, exteriorCount = 1, interiorFirst = false)
+        val marks = buildMarks(3 * hour, hour, plan)
+        assertEquals(listOf("Exterior 100%", "Interior 100%"), marks.map { it.label })
+        assertEquals(listOf(2 * hour, 3 * hour), marks.map { it.timeMs })
+    }
+
+    @Test
+    fun separateWithOneKindUsesThatKindsCountAndNoPrefix() {
+        val plan = IntervalPlan(count = 4, separate = true, interiorCount = 2, exteriorCount = 5)
+        val exteriorOnly = buildMarks(hour, 0L, plan)
+        assertEquals(5, exteriorOnly.size)
+        assertEquals("20%", exteriorOnly.first().label)
+        val interiorOnly = buildMarks(hour, hour, plan)
+        assertEquals(2, interiorOnly.size)
+    }
+
+    @Test
+    fun interiorMillisSplitsTheEstimateAndAddsBackUp() {
+        val standard = WindowType("Standard", 24, 22, true, 1)
+        val types = listOf(standard)
+
+        val both = listOf(TypeCount(1, "Standard", 24, 22))
+        assertEquals(hour, interiorMillis(both, types, emptyList()))
+        assertEquals(2 * hour, totalMillis(both, types, emptyList()))
+
+        assertEquals(0L, interiorMillis(listOf(TypeCount(1, "Standard", 0, 22)), types, emptyList()))
+        val interiorOnly = listOf(TypeCount(1, "Standard", 12, 0))
+        assertEquals(totalMillis(interiorOnly, types, emptyList()), interiorMillis(interiorOnly, types, emptyList()))
+    }
+
+    @Test
+    fun onlyTheFirstPartGetsThePartCompleteSound() {
+        val plan = IntervalPlan(separate = true, interiorCount = 3, exteriorCount = 3)
+        val marks = buildMarks(2 * hour, hour, plan)
+        assertEquals(listOf(0, 1, 4, 0, 1, 3), marks.map { it.sound })
+
+        // One kind only: that's the end of the job, so no part complete sound.
+        val single = buildMarks(hour, hour, plan)
+        assertEquals(3, single.last().sound)
     }
 }

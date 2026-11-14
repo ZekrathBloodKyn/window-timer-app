@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.wolsey.windowtimer.timer.QUARTERS
 import dev.wolsey.windowtimer.alerts.AlertConfig
 import dev.wolsey.windowtimer.alerts.AlertSettings
 import dev.wolsey.windowtimer.alerts.Alerts
@@ -38,7 +37,9 @@ import kotlin.math.roundToInt
 fun AlertEditor(index: Int, config: AlertConfig, onChange: (AlertConfig) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val pct = (QUARTERS[index] * 100).toInt()
+    val title = listOf(
+        "Early alerts", "Middle alerts", "Late alerts", "Final alert", "Part complete"
+    )[index]
     var testing by remember { mutableStateOf(false) }
     var testJob by remember { mutableStateOf<Job?>(null) }
 
@@ -74,7 +75,7 @@ fun AlertEditor(index: Int, config: AlertConfig, onChange: (AlertConfig) -> Unit
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("$pct% alert", style = MaterialTheme.typography.titleMedium)
+                Text(title, style = MaterialTheme.typography.titleMedium)
                 Switch(
                     checked = config.enabled,
                     onCheckedChange = { onChange(config.copy(enabled = it)) }

@@ -30,12 +30,16 @@ object AlertSettings {
     const val MAX_FILE_BYTES = 10L * 1024 * 1024
     const val MAX_PLAY_MS = 22_000L
 
-    /** Index 0..3 = 25%, 50%, 75%, 100%. */
+    /**
+     * Index 0..2 = early, middle and late intervals, 3 = the end of the job,
+     * 4 = the end of the first part when interior and exterior run separately.
+     */
     val defaults = listOf(
         AlertConfig(enabled = true, pitchHz = 660,  beeps = 1, beepMs = 600, rising = false),
         AlertConfig(enabled = true, pitchHz = 880,  beeps = 2, beepMs = 400, rising = false),
         AlertConfig(enabled = true, pitchHz = 1175, beeps = 3, beepMs = 300, rising = false),
-        AlertConfig(enabled = true, pitchHz = 523,  beeps = 4, beepMs = 350, rising = true)
+        AlertConfig(enabled = true, pitchHz = 523,  beeps = 4, beepMs = 350, rising = true),
+        AlertConfig(enabled = true, pitchHz = 988,  beeps = 2, beepMs = 300, rising = true)
     )
 
     /** Where a quarter's imported sound lives in app-private storage. */
@@ -99,7 +103,7 @@ object AlertSettings {
             val duration = try {
                 retriever.setDataSource(tmp.path)
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             } finally {
                 retriever.release()
@@ -109,7 +113,7 @@ object AlertSettings {
             if (dest.exists()) dest.delete()
             if (!tmp.renameTo(dest)) { cleanup(tmp); return null }
             return displayName(context, uri) ?: "Custom sound"
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             cleanup(tmp)
             return null
         }

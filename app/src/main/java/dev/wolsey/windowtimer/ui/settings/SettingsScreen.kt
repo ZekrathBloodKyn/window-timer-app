@@ -61,6 +61,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
         CrewsSection()
 
+        IntervalsSection()
+
         configs.forEachIndexed { index, config ->
             AlertEditor(
                 index = index,
