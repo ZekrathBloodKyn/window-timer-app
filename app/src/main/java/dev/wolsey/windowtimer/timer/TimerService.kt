@@ -43,6 +43,7 @@ class TimerService : Service() {
         const val EXTRA_DONE_BREAKDOWN = "done_breakdown"
         const val EXTRA_DONE_CREW = "done_crew"
         const val EXTRA_INTERIOR_MS = "interior_ms"
+        const val EXTRA_STOPWATCH = "stopwatch"
 
         private const val CHANNEL_ID = "timer"
         private const val NOTIFICATION_ID = 1
@@ -58,6 +59,7 @@ class TimerService : Service() {
         @Volatile var paused = false
         @Volatile private var pausedElapsedMs = 0L
         @Volatile var marks: List<Mark> = emptyList()
+        @Volatile var stopwatch = false
 
         fun elapsedMs(): Long = when {
             !running -> 0L
@@ -101,7 +103,8 @@ class TimerService : Service() {
                     interiorMs = intent.getLongExtra(EXTRA_INTERIOR_MS, 0L),
                     name = intent.getStringExtra(EXTRA_JOB_NAME).orEmpty(),
                     interior = intent.getIntExtra(EXTRA_INTERIOR, 0),
-                    exterior = intent.getIntExtra(EXTRA_EXTERIOR, 0)
+                    exterior = intent.getIntExtra(EXTRA_EXTERIOR, 0),
+                    stopwatchMode = intent.getBooleanExtra(EXTRA_STOPWATCH, false)
                 )
             }
             ACTION_FINISH -> finish(intent)
@@ -113,13 +116,18 @@ class TimerService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun start(total: Long, interiorMs: Long, name: String, interior: Int, exterior: Int) {
-        if (total <= 0 || running) return
+    private fun start(
+        total: Long, interiorMs: Long, name: String, interior: Int, exterior: Int,
+        stopwatchMode: Boolean
+    ) {
+        if (running || (total <= 0 && !stopwatchMode)) return
 
         handler.removeCallbacksAndMessages(null)
-        totalMs = total
+        stopwatch = stopwatchMode
+        totalMs = if (stopwatchMode) 0L else total
         // Fixed for the whole run, so changing settings mid-run can't shift the alerts.
-        marks = buildMarks(total, interiorMs, IntervalSettings.load(this))
+        marks = if (stopwatchMode) emptyList()
+        else buildMarks(total, interiorMs, IntervalSettings.load(this))
         jobName = name
         interiorCount = interior
         exteriorCount = exterior
@@ -133,13 +141,18 @@ class TimerService : Service() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "windowtimer:run")
-            .apply { acquire(total + MAX_RUN_MS) }
+            .apply { acquire(totalMs + MAX_RUN_MS) }
 
-        startForeground(NOTIFICATION_ID, buildNotification("Timer running"))
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(if (stopwatchMode) "Stopwatch running" else "Timer running")
+        )
 
         marks.forEachIndexed { index, mark ->
             handler.postDelayed({ fire(index) }, mark.timeMs)
         }
+
+        if (stopwatchMode) handler.postDelayed(stopwatchTick, OVERTIME_UPDATE_MS)
     }
 
     private fun pause() {
@@ -174,10 +187,14 @@ class TimerService : Service() {
             handler.postDelayed({ fire(index) }, delay)
         }
         // Already past the last alert: restart the overtime notification updates.
-        if (firedCount >= marks.size) handler.postDelayed(overtimeTick, OVERTIME_UPDATE_MS)
+        if (!stopwatch && firedCount >= marks.size) handler.postDelayed(overtimeTick, OVERTIME_UPDATE_MS)
+        if (stopwatch) handler.postDelayed(stopwatchTick, OVERTIME_UPDATE_MS)
 
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification("Timer running"))
+            .notify(
+                NOTIFICATION_ID,
+                buildNotification(if (stopwatch) "Stopwatch running" else "Timer running")
+            )
     }
 
     private val overtimeTick = object : Runnable {
@@ -186,6 +203,15 @@ class TimerService : Service() {
             val over = elapsedMs() - totalMs
             getSystemService(NotificationManager::class.java)
                 .notify(NOTIFICATION_ID, buildNotification("Over estimate by ${formatClock(over)}"))
+            handler.postDelayed(this, OVERTIME_UPDATE_MS)
+        }
+    }
+
+    private val stopwatchTick = object : Runnable {
+        override fun run() {
+            if (!running) return
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, buildNotification("Stopwatch ${formatClock(elapsedMs())}"))
             handler.postDelayed(this, OVERTIME_UPDATE_MS)
         }
     }
@@ -220,6 +246,11 @@ class TimerService : Service() {
         val doneInterior = intent.getIntExtra(EXTRA_DONE_INTERIOR, interiorCount)
         val doneExterior = intent.getIntExtra(EXTRA_DONE_EXTERIOR, exteriorCount)
 
+        // A stopwatch run with no windows entered up front has nothing "planned", so treat
+        // what was done as the plan. That keeps it from showing as a partial job.
+        val noPlan = stopwatch && interiorCount + exteriorCount == 0
+        val doneBreakdown = intent.getStringExtra(EXTRA_DONE_BREAKDOWN).orEmpty()
+
         val run = if (actual >= MIN_RECORD_MS) {
             Run(
                 jobName = jobName,
@@ -228,10 +259,10 @@ class TimerService : Service() {
                 actualMs = actual,
                 interior = doneInterior,
                 exterior = doneExterior,
-                plannedInterior = interiorCount,
-                plannedExterior = exteriorCount,
-                breakdown = intent.getStringExtra(EXTRA_DONE_BREAKDOWN).orEmpty(),
-                plannedBreakdown = plannedBreakdown,
+                plannedInterior = if (noPlan) doneInterior else interiorCount,
+                plannedExterior = if (noPlan) doneExterior else exteriorCount,
+                breakdown = doneBreakdown,
+                plannedBreakdown = if (noPlan) doneBreakdown else plannedBreakdown,
                 crew = intent.getStringExtra(EXTRA_DONE_CREW).orEmpty(),
             )
         } else null
@@ -253,6 +284,7 @@ class TimerService : Service() {
         handler.removeCallbacksAndMessages(null)
         running = false
         paused = false
+        stopwatch = false
         finishing = false
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null

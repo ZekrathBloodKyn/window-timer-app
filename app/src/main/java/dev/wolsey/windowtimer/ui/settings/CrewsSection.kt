@@ -19,8 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.db.SavedCrew
+import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.store.SavedCrewStore
 import kotlinx.coroutines.launch
 

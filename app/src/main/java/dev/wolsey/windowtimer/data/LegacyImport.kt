@@ -2,6 +2,7 @@ package dev.wolsey.windowtimer.data
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import androidx.room.withTransaction
 import dev.wolsey.windowtimer.data.db.AppDatabase
 import dev.wolsey.windowtimer.data.db.Job
@@ -9,7 +10,6 @@ import dev.wolsey.windowtimer.data.db.Run
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import androidx.core.content.edit
 
 /**
  * Copies jobs and runs saved by earlier versions of the app (kept as JSON in

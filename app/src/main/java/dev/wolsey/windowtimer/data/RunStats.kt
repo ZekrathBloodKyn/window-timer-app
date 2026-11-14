@@ -49,7 +49,7 @@ fun summarize(
         if (personId == null) run.windows
         else run.shares(ownerId).firstOrNull { it.personId == personId }?.windows ?: 0
 
-    val full = chosen.filterNot { it.isPartial }
+    val full = chosen.filterNot { it.isPartial || it.plannedMs <= 0L }
     val nFull = full.size
     val fullPlanned = full.sumOf { it.plannedMs }
     val fullActual = full.sumOf { it.actualMs }

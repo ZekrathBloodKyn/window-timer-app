@@ -26,8 +26,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
-import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.db.Run
+import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.store.TypeStore
 import dev.wolsey.windowtimer.timer.totalMillis
 import dev.wolsey.windowtimer.ui.timer.JobNameField

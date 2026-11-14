@@ -4,8 +4,8 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
-import java.io.File
 import androidx.core.content.edit
+import java.io.File
 
 /** Sound settings for one quarter mark. */
 data class AlertConfig(

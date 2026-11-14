@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +56,7 @@ import androidx.core.content.ContextCompat
 import dev.wolsey.windowtimer.alerts.Alerts
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
+import dev.wolsey.windowtimer.data.TypeCount
 import dev.wolsey.windowtimer.data.db.Job
 import dev.wolsey.windowtimer.data.store.JobStore
 import dev.wolsey.windowtimer.data.store.PersonStore
@@ -103,6 +106,8 @@ fun TimerScreen(
     var elapsed by remember { mutableLongStateOf(0L) }
     var serviceTotal by remember { mutableLongStateOf(0L) }
     var serviceMarks by remember { mutableStateOf<List<Mark>>(emptyList()) }
+    var stopwatchMode by rememberSaveable { mutableStateOf(false) }
+    var serviceStopwatch by remember { mutableStateOf(TimerService.stopwatch) }
     var fired by remember { mutableIntStateOf(TimerService.firedCount) }
 
     // Window types, people, and the open visit for the job name that's entered.
@@ -135,6 +140,7 @@ fun TimerScreen(
             elapsed = TimerService.elapsedMs()
             serviceTotal = TimerService.totalMs
             serviceMarks = TimerService.marks
+            serviceStopwatch = TimerService.stopwatch
             fired = TimerService.firedCount
             delay(250)
         }
@@ -167,7 +173,8 @@ fun TimerScreen(
     val interiorCount = Breakdown.totalInterior(counts)
     val exteriorCount = Breakdown.totalExterior(counts)
     val total = if (running) serviceTotal else totalMillis(counts, types, crew)
-    val canStart = total > 0
+    val isStopwatch = if (running) serviceStopwatch else stopwatchMode
+    val canStart = isStopwatch || total > 0
 
     // While running, the alerts are the ones the service was started with.
     val plan = remember { IntervalSettings.load(context) }
@@ -211,6 +218,24 @@ fun TimerScreen(
             OutlinedButton(onClick = onOpenRoute, modifier = Modifier.weight(1f)) {
                 Text("Route")
             }
+        }
+
+        @Suppress("AssignedValueIsNeverRead")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !isStopwatch,
+                enabled = !running,
+                onClick = {
+                    stopwatchMode = false
+                },
+                label = { Text("Countdown") }
+            )
+            FilterChip(
+                selected = isStopwatch,
+                enabled = !running,
+                onClick = { stopwatchMode = true },
+                label = { Text("Stopwatch") }
+            )
         }
 
         JobNameField(
@@ -329,7 +354,9 @@ fun TimerScreen(
         }
 
         Text(
-            text = if (canStart) {
+            text = if (isStopwatch) {
+                "Stopwatch · no estimate. Count windows when you finish."
+            } else if (canStart) {
                 val crewText = if (crew.size > 1) ", ${crew.size} people" else ""
                 "Estimated: ${formatClock(total)}  " +
                         "($interiorCount interior, $exteriorCount exterior$crewText)"
@@ -337,10 +364,11 @@ fun TimerScreen(
             style = MaterialTheme.typography.bodyLarge
         )
 
-        val overtime = running && elapsed > total
+        val overtime = !isStopwatch && running && elapsed > total
 
         Text(
             text = when {
+                isStopwatch -> formatClock(if (running) elapsed else 0L)
                 overtime -> "+" + formatClock(elapsed - total)
                 running -> formatCountdown(total - elapsed)
                 canStart -> formatClock(total)
@@ -357,7 +385,7 @@ fun TimerScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Column(
+        if (!isStopwatch) Column(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -443,6 +471,7 @@ fun TimerScreen(
                             .putExtra(TimerService.EXTRA_EXTERIOR, exteriorCount)
                             .putExtra(TimerService.EXTRA_BREAKDOWN, Breakdown.encode(counts))
                             .putExtra(TimerService.EXTRA_INTERIOR_MS, interiorMs)
+                            .putExtra(TimerService.EXTRA_STOPWATCH, isStopwatch)
                     )
                 },
                 enabled = canStart,
@@ -479,8 +508,13 @@ fun TimerScreen(
 
     @Suppress("AssignedValueIsNeverRead")
     if (showFinish) {
+        // A stopwatch run has every type on offer, since nothing was planned per type.
+        val stopwatchPlanned = types.map { type ->
+            counts.firstOrNull { it.typeId == type.id } ?: TypeCount(type.id, type.name, 0, 0)
+        }
         FinishFlow(
-            planned = counts,
+            planned = if (isStopwatch) stopwatchPlanned else counts,
+            stopwatch = isStopwatch,
             crew = crew,
             onConfirm = { done, members ->
                 showFinish = false

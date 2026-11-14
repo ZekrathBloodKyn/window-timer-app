@@ -2,11 +2,11 @@ package dev.wolsey.windowtimer.data.store
 
 import android.content.Context
 import android.database.sqlite.SQLiteConstraintException
+import androidx.core.content.edit
 import dev.wolsey.windowtimer.data.PaceSettings
 import dev.wolsey.windowtimer.data.db.AppDatabase
 import dev.wolsey.windowtimer.data.db.Person
 import kotlinx.coroutines.flow.Flow
-import androidx.core.content.edit
 
 object PersonStore {
     private const val PREFS = "crew"

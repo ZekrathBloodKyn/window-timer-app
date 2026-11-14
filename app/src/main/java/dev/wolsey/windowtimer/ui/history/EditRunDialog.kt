@@ -24,8 +24,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
-import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.db.Run
+import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.store.TypeStore
 
 /**
@@ -110,7 +110,7 @@ fun EditRunDialog(
                 }
 
                 Text("Windows done", style = MaterialTheme.typography.titleSmall)
-                if (plannedText.isNotBlank()) {
+                if (plannedText.isNotBlank() && run.plannedMs > 0) {
                     Text("Planned: $plannedText", style = MaterialTheme.typography.bodySmall)
                 }
                 if (crewState.loaded) {

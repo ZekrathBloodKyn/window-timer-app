@@ -1,7 +1,7 @@
 package dev.wolsey.windowtimer.timer
 
-import dev.wolsey.windowtimer.data.db.Person
 import dev.wolsey.windowtimer.data.TypeCount
+import dev.wolsey.windowtimer.data.db.Person
 import dev.wolsey.windowtimer.data.db.WindowType
 import dev.wolsey.windowtimer.data.paceFor
 import kotlin.math.roundToLong

@@ -23,8 +23,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Crew
 import dev.wolsey.windowtimer.data.CrewMember
-import dev.wolsey.windowtimer.data.db.Person
 import dev.wolsey.windowtimer.data.TypeCount
+import dev.wolsey.windowtimer.data.db.Person
 
 /**
  * The Finish flow: a Yes / No / Cancel dialog asking whether every window was done.
@@ -39,9 +39,10 @@ fun FinishFlow(
     planned: List<TypeCount>,
     crew: List<Person>,
     onConfirm: (done: List<TypeCount>, members: List<CrewMember>) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    stopwatch: Boolean = false
 ) {
-    var askCounts by remember { mutableStateOf(false) }
+    var askCounts by remember { mutableStateOf(stopwatch) }
 
     // Normally the crew is never empty; this is just a safety net.
     val who = crew.ifEmpty { listOf(Person("Me", 24, 22, true, 0)) }
@@ -124,7 +125,10 @@ fun FinishFlow(
                                     texts[base] = it.filter(Char::isDigit).take(3)
                                 },
                                 label = {
-                                    Text("${count.name} interior (planned ${split[p][t].interior})")
+                                    Text(
+                                        if (stopwatch) "${count.name} interior"
+                                        else "${count.name} interior (planned ${split[p][t].interior})"
+                                    )
                                 },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -136,7 +140,10 @@ fun FinishFlow(
                                     texts[base + 1] = it.filter(Char::isDigit).take(3)
                                 },
                                 label = {
-                                    Text("${count.name} exterior (planned ${split[p][t].exterior})")
+                                    Text(
+                                        if (stopwatch) "${count.name} exterior"
+                                        else "${count.name} exterior (planned ${split[p][t].exterior})"
+                                    )
                                 },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -146,7 +153,8 @@ fun FinishFlow(
                     }
                     if (who.size > 1) {
                         Text(
-                            "Done: $doneInterior of ${planned.sumOf { it.interior }} interior · " +
+                            if (stopwatch) "Done: $doneInterior interior · $doneExterior exterior"
+                            else "Done: $doneInterior of ${planned.sumOf { it.interior }} interior · " +
                                     "$doneExterior of ${planned.sumOf { it.exterior }} exterior",
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -159,8 +167,10 @@ fun FinishFlow(
             dismissButton = {
                 Row {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    @Suppress("AssignedValueIsNeverRead")
-                    TextButton(onClick = { askCounts = false }) { Text("Back") }
+                    if (!stopwatch) {
+                        @Suppress("AssignedValueIsNeverRead")
+                        TextButton(onClick = { askCounts = false }) { Text("Back") }
+                    }
                 }
             }
         )

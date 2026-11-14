@@ -17,11 +17,11 @@ import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
 import dev.wolsey.windowtimer.data.CrewMember
-import dev.wolsey.windowtimer.data.db.Person
-import dev.wolsey.windowtimer.data.store.PersonStore
-import dev.wolsey.windowtimer.data.db.Run
 import dev.wolsey.windowtimer.data.TypeCount
+import dev.wolsey.windowtimer.data.db.Person
+import dev.wolsey.windowtimer.data.db.Run
 import dev.wolsey.windowtimer.data.db.WindowType
+import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.ui.timer.CountRow
 import dev.wolsey.windowtimer.ui.timer.CrewChips
 import dev.wolsey.windowtimer.ui.timer.SavedCrewChips

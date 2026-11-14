@@ -455,4 +455,17 @@ class PlanAndBreakdownTest {
         val single = buildMarks(hour, hour, plan)
         assertEquals(3, single.last().sound)
     }
+
+    @Test
+    fun stopwatchRunsStayOutOfEstimateAveragesButCountForPace() {
+        val timed = soloRun()                                          // 1 h estimate, 1 h actual, 12 windows
+        val stopwatch = soloRun().copy(plannedMs = 0L, actualMs = 2 * hour)
+
+        val s = summarize(listOf(timed, stopwatch))!!
+        assertEquals(2, s.count)
+        assertEquals(1, s.fullRunCount)
+        assertEquals(hour, s.avgPlannedMs)
+        assertEquals(0L, s.avgDiffMs)
+        assertEquals(8.0, s.overallPace!!, 0.001)    // 24 windows over 3 hours
+    }
 }

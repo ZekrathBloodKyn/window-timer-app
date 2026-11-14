@@ -31,13 +31,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import dev.wolsey.windowtimer.data.db.Person
-import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.TypePace
 import dev.wolsey.windowtimer.data.TypePaces
-import dev.wolsey.windowtimer.data.store.TypeStore
+import dev.wolsey.windowtimer.data.db.Person
 import dev.wolsey.windowtimer.data.db.WindowType
 import dev.wolsey.windowtimer.data.paceFor
+import dev.wolsey.windowtimer.data.store.PersonStore
+import dev.wolsey.windowtimer.data.store.TypeStore
 import dev.wolsey.windowtimer.data.typePaceMap
 import kotlinx.coroutines.launch
 

@@ -28,8 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import dev.wolsey.windowtimer.data.store.TypeStore
 import dev.wolsey.windowtimer.data.db.WindowType
+import dev.wolsey.windowtimer.data.store.TypeStore
 import kotlinx.coroutines.launch
 
 /** Lists the window types, each with its own interior and exterior pace. */

@@ -44,12 +44,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
-import dev.wolsey.windowtimer.data.db.Run
-import dev.wolsey.windowtimer.data.store.RunStore
 import dev.wolsey.windowtimer.data.RunSummary
+import dev.wolsey.windowtimer.data.db.Run
 import dev.wolsey.windowtimer.data.db.Visit
 import dev.wolsey.windowtimer.data.shares
 import dev.wolsey.windowtimer.data.store.PersonStore
+import dev.wolsey.windowtimer.data.store.RunStore
 import dev.wolsey.windowtimer.data.store.VisitStore
 import dev.wolsey.windowtimer.data.summarize
 import dev.wolsey.windowtimer.timer.formatClock
@@ -426,7 +426,7 @@ private fun SummaryCard(summary: RunSummary, personName: String?) {
             if (summary.fullRunCount > 0) {
                 val note =
                     if (summary.fullRunCount == summary.count) ""
-                    else " (${summary.fullRunCount} full runs)"
+                    else " (${summary.fullRunCount} complete runs with an estimate)"
                 Text("Avg estimate ${formatClock(summary.avgPlannedMs)}$note")
                 Text("Avg actual ${formatClock(summary.avgActualMs)} ($diffText vs estimate)")
             }
@@ -461,7 +461,7 @@ private fun RunCard(
     visitWindows: Int
 ) {
     // The estimate covered the full job, so only compare it when everything was done.
-    val diffText = if (run.isPartial) "" else {
+    val diffText = if (run.isPartial || run.plannedMs <= 0L) "" else {
         val diff = run.actualMs - run.plannedMs
         " (" + (if (diff >= 0) "+" else "−") + formatClock(abs(diff)) + ")"
     }
@@ -504,7 +504,11 @@ private fun RunCard(
                 }
             }
             Text(
-                "Estimate ${formatClock(run.plannedMs)} · Actual ${formatClock(run.actualMs)}$diffText",
+                if (run.plannedMs > 0) {
+                    "Estimate ${formatClock(run.plannedMs)} · Actual ${formatClock(run.actualMs)}$diffText"
+                } else {
+                    "Stopwatch · Actual ${formatClock(run.actualMs)}"
+                },
                 style = MaterialTheme.typography.bodyMedium
             )
             val pace = run.actualPace?.let { " · %.1f windows/hr".format(it) } ?: ""
