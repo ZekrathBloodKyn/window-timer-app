@@ -110,5 +110,33 @@ fun IntervalsSection() {
                 style = MaterialTheme.typography.bodySmall
             )
         }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Stopwatch alerts")
+                Text(
+                    "In stopwatch mode, alert at a regular time interval.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(
+                checked = plan.stopwatchAlerts,
+                onCheckedChange = { update(plan.copy(stopwatchAlerts = it)) }
+            )
+        }
+
+        if (plan.stopwatchAlerts) {
+            SettingSlider(
+                label = "Every ${plan.stopwatchMinutes} minute${if (plan.stopwatchMinutes == 1) "" else "s"}",
+                value = plan.stopwatchMinutes.toFloat(),
+                range = IntervalPlan.MINUTES_MIN.toFloat()..IntervalPlan.MINUTES_MAX.toFloat(),
+                steps = 0,
+                onChange = { update(plan.copy(stopwatchMinutes = it.roundToInt())) }
+            )
+        }
     }
 }

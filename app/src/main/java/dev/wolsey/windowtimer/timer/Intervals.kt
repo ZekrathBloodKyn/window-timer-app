@@ -10,11 +10,15 @@ data class IntervalPlan(
     val separate: Boolean = false,      // give interior and exterior their own intervals
     val interiorCount: Int = 4,
     val exteriorCount: Int = 4,
-    val interiorFirst: Boolean = true
+    val interiorFirst: Boolean = true,
+    val stopwatchAlerts: Boolean = false,   // repeating alert in stopwatch mode
+    val stopwatchMinutes: Int = 15
 ) {
     companion object {
         const val MIN = 1
         const val MAX = 20
+        const val MINUTES_MIN = 1
+        const val MINUTES_MAX = 120
     }
 }
 
@@ -31,7 +35,10 @@ object IntervalSettings {
             separate = p.getBoolean("separate", d.separate),
             interiorCount = count("interior", d.interiorCount),
             exteriorCount = count("exterior", d.exteriorCount),
-            interiorFirst = p.getBoolean("interior_first", d.interiorFirst)
+            interiorFirst = p.getBoolean("interior_first", d.interiorFirst),
+            stopwatchAlerts = p.getBoolean("stopwatch_alerts", d.stopwatchAlerts),
+            stopwatchMinutes = p.getInt("stopwatch_minutes", d.stopwatchMinutes)
+                .coerceIn(IntervalPlan.MINUTES_MIN, IntervalPlan.MINUTES_MAX)
         )
     }
 
@@ -42,6 +49,8 @@ object IntervalSettings {
             putInt("interior", plan.interiorCount)
             putInt("exterior", plan.exteriorCount)
             putBoolean("interior_first", plan.interiorFirst)
+            putBoolean("stopwatch_alerts", plan.stopwatchAlerts)
+            putInt("stopwatch_minutes", plan.stopwatchMinutes)
         }
     }
 }
@@ -108,3 +117,7 @@ private fun segment(start: Long, length: Long, n: Int, group: IntervalGroup, pre
 /** The last alert of a group is the final sound; the rest spread over early, middle and late. */
 fun soundStage(k: Int, n: Int): Int =
     if (k >= n) 3 else (((k - 1) * 3) / (n - 1)).coerceIn(0, 2)
+
+/** The next repeating alert after [elapsedMs]: the next multiple of [everyMs]. */
+fun nextStopwatchAlert(elapsedMs: Long, everyMs: Long): Long =
+    (elapsedMs / everyMs + 1) * everyMs

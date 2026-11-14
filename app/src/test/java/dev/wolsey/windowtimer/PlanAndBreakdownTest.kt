@@ -20,6 +20,7 @@ import dev.wolsey.windowtimer.timer.formatClock
 import dev.wolsey.windowtimer.timer.formatCountdown
 import dev.wolsey.windowtimer.timer.interiorMillis
 import dev.wolsey.windowtimer.timer.markMillis
+import dev.wolsey.windowtimer.timer.nextStopwatchAlert
 import dev.wolsey.windowtimer.timer.soundStage
 import dev.wolsey.windowtimer.timer.totalMillis
 import dev.wolsey.windowtimer.ui.history.TimeFramePreset
@@ -467,5 +468,16 @@ class PlanAndBreakdownTest {
         assertEquals(hour, s.avgPlannedMs)
         assertEquals(0L, s.avgDiffMs)
         assertEquals(8.0, s.overallPace!!, 0.001)    // 24 windows over 3 hours
+    }
+
+    @Test
+    fun stopwatchAlertsLandOnEveryMultipleOfTheInterval() {
+        val every = 15 * 60_000L
+        assertEquals(every, nextStopwatchAlert(0L, every))
+        assertEquals(every, nextStopwatchAlert(every - 1, every))
+        // Right on an alert (or just after), the next one is a full interval away.
+        assertEquals(2 * every, nextStopwatchAlert(every, every))
+        assertEquals(2 * every, nextStopwatchAlert(every + 200, every))
+        assertEquals(5 * every, nextStopwatchAlert(4 * every + 1, every))
     }
 }

@@ -38,7 +38,8 @@ fun AlertEditor(index: Int, config: AlertConfig, onChange: (AlertConfig) -> Unit
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val title = listOf(
-        "Early alerts", "Middle alerts", "Late alerts", "Final alert", "Part complete"
+        "Early alerts", "Middle alerts", "Late alerts", "Final alert",
+        "Part complete", "Stopwatch alert"
     )[index]
     var testing by remember { mutableStateOf(false) }
     var testJob by remember { mutableStateOf<Job?>(null) }

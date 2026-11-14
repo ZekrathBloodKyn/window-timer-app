@@ -30,16 +30,25 @@ object AlertSettings {
     const val MAX_FILE_BYTES = 10L * 1024 * 1024
     const val MAX_PLAY_MS = 22_000L
 
+    /** The sound for repeating stopwatch alerts. */
+    const val STOPWATCH_SOUND = 5
+
     /**
      * Index 0..2 = early, middle and late intervals, 3 = the end of the job,
      * 4 = the end of the first part when interior and exterior run separately.
+     */
+    /**
+     * Index 0..2 = early, middle and late intervals, 3 = the end of the job,
+     * 4 = the end of the first part when interior and exterior run separately,
+     * 5 = the repeating stopwatch alert.
      */
     val defaults = listOf(
         AlertConfig(enabled = true, pitchHz = 660,  beeps = 1, beepMs = 600, rising = false),
         AlertConfig(enabled = true, pitchHz = 880,  beeps = 2, beepMs = 400, rising = false),
         AlertConfig(enabled = true, pitchHz = 1175, beeps = 3, beepMs = 300, rising = false),
         AlertConfig(enabled = true, pitchHz = 523,  beeps = 4, beepMs = 350, rising = true),
-        AlertConfig(enabled = true, pitchHz = 988,  beeps = 2, beepMs = 300, rising = true)
+        AlertConfig(enabled = true, pitchHz = 988,  beeps = 2, beepMs = 300, rising = true),
+        AlertConfig(enabled = true, pitchHz = 740,  beeps = 2, beepMs = 250, rising = false)
     )
 
     /** Where a quarter's imported sound lives in app-private storage. */

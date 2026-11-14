@@ -84,6 +84,7 @@ class TimerService : Service() {
     private var interiorCount = 0
     private var exteriorCount = 0
     private var startedAt = 0L
+    private var stopwatchEveryMs = 0L   // 0 = no repeating alert
 
     override fun onCreate() {
         super.onCreate()
@@ -126,8 +127,10 @@ class TimerService : Service() {
         stopwatch = stopwatchMode
         totalMs = if (stopwatchMode) 0L else total
         // Fixed for the whole run, so changing settings mid-run can't shift the alerts.
-        marks = if (stopwatchMode) emptyList()
-        else buildMarks(total, interiorMs, IntervalSettings.load(this))
+        val plan = IntervalSettings.load(this)
+        marks = if (stopwatchMode) emptyList() else buildMarks(total, interiorMs, plan)
+        stopwatchEveryMs =
+            if (stopwatchMode && plan.stopwatchAlerts) plan.stopwatchMinutes * 60_000L else 0L
         jobName = name
         interiorCount = interior
         exteriorCount = exterior
@@ -152,8 +155,10 @@ class TimerService : Service() {
             handler.postDelayed({ fire(index) }, mark.timeMs)
         }
 
-        if (stopwatchMode) handler.postDelayed(stopwatchTick, OVERTIME_UPDATE_MS)
-    }
+        if (stopwatchMode) {
+            handler.postDelayed(stopwatchTick, OVERTIME_UPDATE_MS)
+            scheduleStopwatchAlert(0L)
+        }    }
 
     private fun pause() {
         if (!running || paused) return
@@ -188,8 +193,10 @@ class TimerService : Service() {
         }
         // Already past the last alert: restart the overtime notification updates.
         if (!stopwatch && firedCount >= marks.size) handler.postDelayed(overtimeTick, OVERTIME_UPDATE_MS)
-        if (stopwatch) handler.postDelayed(stopwatchTick, OVERTIME_UPDATE_MS)
-
+        if (stopwatch) {
+            handler.postDelayed(stopwatchTick, OVERTIME_UPDATE_MS)
+            scheduleStopwatchAlert(elapsed)
+        }
         getSystemService(NotificationManager::class.java)
             .notify(
                 NOTIFICATION_ID,
@@ -214,6 +221,28 @@ class TimerService : Service() {
                 .notify(NOTIFICATION_ID, buildNotification("Stopwatch ${formatClock(elapsedMs())}"))
             handler.postDelayed(this, OVERTIME_UPDATE_MS)
         }
+    }
+
+    /** Schedules the next repeating alert after [elapsed], if they're turned on. */
+    private fun scheduleStopwatchAlert(elapsed: Long) {
+        val every = stopwatchEveryMs
+        if (every <= 0) return
+        val next = nextStopwatchAlert(elapsed, every)
+        handler.postDelayed({ fireStopwatchAlert(next) }, next - elapsed)
+    }
+
+    private fun fireStopwatchAlert(atMs: Long) {
+        if (!running || paused) return
+
+        // Read settings now, so changes made during a run take effect.
+        val config = AlertSettings.load(this)[AlertSettings.STOPWATCH_SOUND]
+        if (config.enabled) Alerts.play(this, AlertSettings.STOPWATCH_SOUND, config)
+
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, buildNotification("Stopwatch ${formatClock(atMs)}"))
+
+        // If this fired a hair late, still aim for the next multiple, never the same one.
+        scheduleStopwatchAlert(maxOf(elapsedMs(), atMs))
     }
 
     private fun fire(index: Int) {
