@@ -1,6 +1,7 @@
 package dev.wolsey.windowtimer.data
 
 import dev.wolsey.windowtimer.data.db.Run
+import dev.wolsey.windowtimer.data.db.Visit
 
 /** Averages over a set of runs. */
 data class RunSummary(
@@ -10,7 +11,8 @@ data class RunSummary(
     val avgActualMs: Long,
     val avgDiffMs: Long,       // positive = ran over the estimate
     val overallPace: Double?,  // by windows actually done, over the run's clock time
-    val perPersonPace: Double? = null  // everyone view only: windows per person-hour
+    val perPersonPace: Double? = null,  // everyone view only: windows per person-hour
+    val visitPace: Double? = null  // windows per hour of time on site, finished visits only
 )
 
 /** How many windows one person did in one run. */
@@ -33,7 +35,12 @@ fun Run.shares(ownerId: Long): List<Share> {
  * clock time. With a person, only runs they worked count, and pace is their own windows
  * over the run's clock time (everyone shares one clock).
  */
-fun summarize(runs: List<Run>, personId: Long? = null, ownerId: Long = 0L): RunSummary? {
+fun summarize(
+    runs: List<Run>,
+    personId: Long? = null,
+    ownerId: Long = 0L,
+    visitsById: Map<Long, Visit> = emptyMap()
+): RunSummary? {
     val chosen = if (personId == null) runs
     else runs.filter { run -> run.shares(ownerId).any { it.personId == personId } }
     if (chosen.isEmpty()) return null
@@ -51,6 +58,21 @@ fun summarize(runs: List<Run>, personId: Long? = null, ownerId: Long = 0L): RunS
     val totalWindows = chosen.sumOf { windowsIn(it) }
     val personMs = chosen.sumOf { it.actualMs * it.shares(ownerId).size }
 
+    // On-site pace: each finished visit counts once, even if it holds several runs.
+    var visitMs = 0L
+    var visitWindows = 0
+    chosen.filter { it.visitId != null }
+        .groupBy { it.visitId!! }
+        .forEach { (visitId, visitRuns) ->
+            val visit = visitsById[visitId] ?: return@forEach
+            val left = visit.departedAt ?: return@forEach
+            val onSite = left - visit.arrivedAt
+            if (onSite > 0) {
+                visitMs += onSite
+                visitWindows += visitRuns.sumOf { windowsIn(it) }
+            }
+        }
+
     return RunSummary(
         count = chosen.size,
         fullRunCount = nFull,
@@ -62,6 +84,9 @@ fun summarize(runs: List<Run>, personId: Long? = null, ownerId: Long = 0L): RunS
         else null,
         perPersonPace = if (personId == null && personMs > 0 && totalWindows > 0)
             totalWindows * 3_600_000.0 / personMs
+        else null,
+        visitPace = if (visitMs > 0 && visitWindows > 0)
+            visitWindows * 3_600_000.0 / visitMs
         else null
     )
 }

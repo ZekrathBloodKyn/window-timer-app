@@ -115,8 +115,15 @@ fun HistoryScreen(onBack: () -> Unit) {
     val summary = summarize(
         shown.filterIsInstance<HistoryEntry.RunEntry>().map { it.run },
         activePerson?.id,
-        ownerId
+        ownerId,
+        visits.associateBy { it.id }
     )
+
+    val visitWindowTotals = remember(runs) {
+        runs.mapNotNull { r -> r.visitId?.let { it to r.windows } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { it.value.sum() }
+    }
 
     Column(
         modifier = Modifier
@@ -231,7 +238,8 @@ fun HistoryScreen(onBack: () -> Unit) {
                             timeFormat = timeFormat,
                             onEdit = { editingRun = entry.run },
                             onEditVisit = { entry.visit?.let { editingVisit = it } },
-                            onDelete = { scope.launch { RunStore.delete(context, entry.run) } }
+                            onDelete = { scope.launch { RunStore.delete(context, entry.run) } },
+                            visitWindows = entry.run.visitId?.let { visitWindowTotals[it] } ?: entry.run.windows,
                         )
 
                         is HistoryEntry.VisitEntry -> VisitCard(
@@ -428,6 +436,9 @@ private fun SummaryCard(summary: RunSummary, personName: String?) {
                     else "$personName's pace %.1f windows/hr".format(it)
                 )
             }
+            summary.visitPace?.let {
+                Text("On-site pace %.1f windows/hr".format(it))
+            }
             // Only worth showing when it differs, i.e. at least one run had more than one person.
             val crewPace = summary.overallPace
             val perPerson = summary.perPersonPace
@@ -446,7 +457,8 @@ private fun RunCard(
     timeFormat: SimpleDateFormat,
     onEdit: () -> Unit,
     onEditVisit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    visitWindows: Int
 ) {
     // The estimate covered the full job, so only compare it when everything was done.
     val diffText = if (run.isPartial) "" else {
@@ -525,6 +537,13 @@ private fun RunCard(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(onClick = onEditVisit) { Text("Edit visit") }
+                }
+                val onSite = visit.departedAt?.let { it - visit.arrivedAt }
+                if (onSite != null && onSite > 0 && visitWindows > 0) {
+                    Text(
+                        "On-site pace %.1f windows/hr".format(visitWindows * 3_600_000.0 / onSite),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
