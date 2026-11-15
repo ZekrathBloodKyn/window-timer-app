@@ -523,12 +523,18 @@ private fun RunCard(
             val crew = Crew.decode(run.crew)
             if (crew.size > 1) {
                 crew.forEach { member ->
-                    // Everyone works the same clock, so a person's pace is their windows over the run time.
-                    val pace = if (run.actualMs > 0 && member.windows > 0)
-                        " · %.1f/hr".format(member.windows * 3_600_000.0 / run.actualMs)
+                    // Pace is windows over the time they were there.
+                    val presentMs = member.presentMs(run.actualMs)
+                    val pace = if (presentMs > 0 && member.windows > 0)
+                        " · %.1f/hr".format(member.windows * 3_600_000.0 / presentMs)
                     else ""
+                    val away = buildList {
+                        if (member.startMs > 0) add("from ${formatClock(member.startMs)}")
+                        member.endMs?.let { add("until ${formatClock(it)}") }
+                    }.joinToString(" ")
                     Text(
-                        "${member.name}: ${member.windows} windows$pace",
+                        "${member.name}: ${member.windows} windows$pace" +
+                                if (away.isNotEmpty()) " ($away)" else "",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

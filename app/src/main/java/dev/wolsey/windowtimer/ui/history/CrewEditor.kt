@@ -2,7 +2,10 @@ package dev.wolsey.windowtimer.ui.history
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,7 +15,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
@@ -39,6 +44,8 @@ class CrewEditState {
     var choices by mutableStateOf<List<Person>>(emptyList())   // who can be picked
     var selected by mutableStateOf<List<Long>>(emptyList())    // who worked
     val rows = mutableStateMapOf<Long, List<CountRow>>()       // each person's counts
+    val startText = mutableStateMapOf<Long, String>()          // minutes after the start
+    val endText = mutableStateMapOf<Long, String>()            // minutes after the start
 
     fun crewPeople(): List<Person> = selected.mapNotNull { id -> choices.firstOrNull { it.id == id } }
 
@@ -46,14 +53,20 @@ class CrewEditState {
     fun members(): List<CrewMember> = crewPeople().map { p ->
         CrewMember(
             p.id, p.name, p.interiorPace, p.exteriorPace,
-            rows[p.id].orEmpty().toCounts().filter { it.windows > 0 }
+            rows[p.id].orEmpty().toCounts().filter { it.windows > 0 },
+            startMs = (startText[p.id]?.toLongOrNull() ?: 0L) * 60_000L,
+            endMs = endText[p.id]?.toLongOrNull()?.takeIf { it > 0 }?.times(60_000L)
         )
     }
 
     fun setSelected(next: List<Long>, standard: WindowType?) {
         val default = listOfNotNull(standard?.let { CountRow(it.id, it.name) })
         next.filter { it !in selected }.forEach { rows[it] = default }
-        selected.filter { it !in next }.forEach { rows.remove(it) }
+        selected.filter { it !in next }.forEach {
+            rows.remove(it)
+            startText.remove(it)
+            endText.remove(it)
+        }
         selected = next
     }
 
@@ -94,8 +107,12 @@ class CrewEditState {
             }
             snapshot.isNotEmpty() -> {
                 selected = snapshot.map { it.personId }
-                snapshot.forEach { rows[it.personId] = it.counts.toRows().ifEmpty { default } }
+                snapshot.forEach {
+                    if (it.startMs > 0) startText[it.personId] = (it.startMs / 60_000).toString()
+                    it.endMs?.let { end -> endText[it.personId] = (end / 60_000).toString() }
+                }
             }
+
             else -> {
                 selected = listOf(owner.id)
                 rows[owner.id] = Breakdown.resolve(run.breakdown, run.interior, run.exterior, standard)
@@ -142,6 +159,26 @@ fun CrewEditor(state: CrewEditState, types: List<WindowType>, standard: WindowTy
                 onRowsChange = { state.rows[person.id] = it },
                 enabled = true
             )
+            if (state.selected.size > 1) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.startText[person.id].orEmpty(),
+                        onValueChange = { state.startText[person.id] = it.filter(Char::isDigit).take(3) },
+                        label = { Text("Started after (min)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = state.endText[person.id].orEmpty(),
+                        onValueChange = { state.endText[person.id] = it.filter(Char::isDigit).take(3) },
+                        label = { Text("Left after (min)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }

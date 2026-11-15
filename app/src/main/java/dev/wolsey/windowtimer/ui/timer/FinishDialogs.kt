@@ -25,6 +25,7 @@ import dev.wolsey.windowtimer.data.Crew
 import dev.wolsey.windowtimer.data.CrewMember
 import dev.wolsey.windowtimer.data.TypeCount
 import dev.wolsey.windowtimer.data.db.Person
+import dev.wolsey.windowtimer.timer.Availability
 
 /**
  * The Finish flow: a Yes / No / Cancel dialog asking whether every window was done.
@@ -40,19 +41,32 @@ fun FinishFlow(
     crew: List<Person>,
     onConfirm: (done: List<TypeCount>, members: List<CrewMember>) -> Unit,
     onDismiss: () -> Unit,
-    stopwatch: Boolean = false
+    stopwatch: Boolean = false,
+    availability: Map<Long, Availability> = emptyMap(),
+    elapsedMs: Long = 0L,
 ) {
     var askCounts by remember { mutableStateOf(stopwatch) }
 
     // Normally the crew is never empty; this is just a safety net.
     val who = crew.ifEmpty { listOf(Person("Me", 24, 22, true, 0)) }
-    val split = remember(planned, who) { Crew.split(planned, who) }
+    // How long each person actually worked, so the suggested split follows it.
+    val present = who.associate { p ->
+        val a = availability[p.id] ?: Availability()
+        val end = (a.endMs ?: elapsedMs).coerceAtMost(elapsedMs)
+        p.id to (end - a.startMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+    }
+    val split = remember(planned, who, present) {
+        Crew.split(planned, who, if (availability.isEmpty()) emptyMap() else present)
+    }
 
     fun finish(perPerson: List<List<TypeCount>>) {
         val members = who.mapIndexed { p, person ->
+            val a = availability[person.id]
             CrewMember(
                 person.id, person.name, person.interiorPace, person.exteriorPace,
-                perPerson[p].filter { it.windows > 0 }
+                perPerson[p].filter { it.windows > 0 },
+                startMs = (a?.startMs ?: 0L).coerceIn(0L, elapsedMs),
+                endMs = a?.endMs?.takeIf { it < elapsedMs }
             )
         }
         val done = planned.indices.map { t ->

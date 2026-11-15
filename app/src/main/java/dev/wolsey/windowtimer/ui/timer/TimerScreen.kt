@@ -62,6 +62,7 @@ import dev.wolsey.windowtimer.data.store.JobStore
 import dev.wolsey.windowtimer.data.store.PersonStore
 import dev.wolsey.windowtimer.data.store.TypeStore
 import dev.wolsey.windowtimer.data.store.VisitStore
+import dev.wolsey.windowtimer.timer.AvailabilityCodec
 import dev.wolsey.windowtimer.timer.IntervalSettings
 import dev.wolsey.windowtimer.timer.Mark
 import dev.wolsey.windowtimer.timer.TimerService
@@ -89,7 +90,9 @@ fun TimerScreen(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenRoute: () -> Unit,
-    onOpenJobs: () -> Unit
+    onOpenJobs: () -> Unit,
+    availability: String,
+    onAvailabilityChange: (String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -169,16 +172,18 @@ fun TimerScreen(
     }
 
     val crew = people.filter { it.id in crewIds }
+    val crewIdSet = crew.map { it.id }.toSet()
+    val presence = AvailabilityCodec.decode(availability).filterKeys { it in crewIdSet }
     val counts = rows.toCounts()
     val interiorCount = Breakdown.totalInterior(counts)
     val exteriorCount = Breakdown.totalExterior(counts)
-    val total = if (running) serviceTotal else totalMillis(counts, types, crew)
+    val total = if (running) serviceTotal else totalMillis(counts, types, crew, presence)
     val isStopwatch = if (running) serviceStopwatch else stopwatchMode
     val canStart = isStopwatch || total > 0
 
     // While running, the alerts are the ones the service was started with.
     val plan = remember { IntervalSettings.load(context) }
-    val interiorMs = interiorMillis(counts, types, crew)
+    val interiorMs = interiorMillis(counts, types, crew, presence)
     val marks = if (running) serviceMarks else buildMarks(total, interiorMs, plan)
 
     val resetChecks = {
@@ -316,6 +321,16 @@ fun TimerScreen(
                 enabled = !running
             )
             SavedCrewChips(people, crewIds, onCrewChange, enabled = !running)
+        }
+
+        if (crew.size > 1) {
+            AvailabilityRows(
+                crew = crew,
+                availability = presence,
+                onChange = { onAvailabilityChange(AvailabilityCodec.encode(it)) },
+                running = running,
+                elapsedMs = elapsed
+            )
         }
 
         TypeCountRows(
@@ -498,6 +513,8 @@ fun TimerScreen(
                             .setAction(TimerService.ACTION_CANCEL)
                     )
                     Alerts.stop()
+                    onAvailabilityChange("")
+                    Toast.makeText(context, "Run discarded", Toast.LENGTH_SHORT).show()
                 }) { Text("Discard") }
             },
             dismissButton = {
@@ -531,8 +548,11 @@ fun TimerScreen(
                         .putExtra(TimerService.EXTRA_DONE_CREW, Crew.encode(members))
                 )
                 Alerts.stop()
+                onAvailabilityChange("")
             },
-            onDismiss = { showFinish = false }
+            onDismiss = { showFinish = false },
+            availability = presence,
+            elapsedMs = finishElapsedMs,
         )
     }
 

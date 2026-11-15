@@ -15,8 +15,8 @@ data class RunSummary(
     val visitPace: Double? = null  // windows per hour of time on site, finished visits only
 )
 
-/** How many windows one person did in one run. */
-data class Share(val personId: Long, val windows: Int)
+/** How many windows one person did in one run, and how long they were there. */
+data class Share(val personId: Long, val windows: Int, val presentMs: Long)
 
 /**
  * Who worked this run. Runs recorded before crews existed count as [ownerId]
@@ -24,8 +24,8 @@ data class Share(val personId: Long, val windows: Int)
  */
 fun Run.shares(ownerId: Long): List<Share> {
     val members = Crew.decode(crew)
-    return if (members.isEmpty()) listOf(Share(ownerId, windows))
-    else members.map { Share(it.personId, it.windows) }
+    return if (members.isEmpty()) listOf(Share(ownerId, windows, actualMs))
+    else members.map { Share(it.personId, it.windows, it.presentMs(actualMs)) }
 }
 
 /**
@@ -56,7 +56,12 @@ fun summarize(
 
     val totalActual = chosen.sumOf { it.actualMs }
     val totalWindows = chosen.sumOf { windowsIn(it) }
-    val personMs = chosen.sumOf { it.actualMs * it.shares(ownerId).size }
+    val personMs = chosen.sumOf { run -> run.shares(ownerId).sumOf { it.presentMs } }
+    // One person's pace is over the time they were there; the crew's is over the run's time.
+    val paceMs = if (personId == null) totalActual
+    else chosen.sumOf { run ->
+        run.shares(ownerId).firstOrNull { it.personId == personId }?.presentMs ?: 0L
+    }
 
     // On-site pace: each finished visit counts once, even if it holds several runs.
     var visitMs = 0L
@@ -79,8 +84,8 @@ fun summarize(
         avgPlannedMs = if (nFull > 0) fullPlanned / nFull else 0L,
         avgActualMs = if (nFull > 0) fullActual / nFull else 0L,
         avgDiffMs = if (nFull > 0) (fullActual - fullPlanned) / nFull else 0L,
-        overallPace = if (totalActual > 0 && totalWindows > 0)
-            totalWindows * 3_600_000.0 / totalActual
+        overallPace = if (paceMs > 0 && totalWindows > 0)
+            totalWindows * 3_600_000.0 / paceMs
         else null,
         perPersonPace = if (personId == null && personMs > 0 && totalWindows > 0)
             totalWindows * 3_600_000.0 / personMs

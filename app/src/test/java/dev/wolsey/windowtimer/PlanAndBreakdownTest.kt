@@ -14,6 +14,8 @@ import dev.wolsey.windowtimer.data.paceFor
 import dev.wolsey.windowtimer.data.routing.RouteOptimizer
 import dev.wolsey.windowtimer.data.routing.parseCoordinates
 import dev.wolsey.windowtimer.data.summarize
+import dev.wolsey.windowtimer.timer.Availability
+import dev.wolsey.windowtimer.timer.AvailabilityCodec
 import dev.wolsey.windowtimer.timer.IntervalPlan
 import dev.wolsey.windowtimer.timer.buildMarks
 import dev.wolsey.windowtimer.timer.formatClock
@@ -479,5 +481,78 @@ class PlanAndBreakdownTest {
         assertEquals(2 * every, nextStopwatchAlert(every, every))
         assertEquals(2 * every, nextStopwatchAlert(every + 200, every))
         assertEquals(5 * every, nextStopwatchAlert(4 * every + 1, every))
+    }
+
+    private val pairA = Person("A", 24, 22, true, 1)
+    private val pairB = Person("B", 24, 22, false, 2)
+    private val standardOnly = listOf(WindowType("Standard", 24, 22, true, 1))
+
+    @Test
+    fun aLateStartLengthensTheEstimate() {
+        val counts = listOf(TypeCount(1, "Standard", 48, 0))      // 1 hour for the pair together
+        val crew = listOf(pairA, pairB)
+        assertEquals(hour, totalMillis(counts, standardOnly, crew))
+
+        // B starts after 30 min: half speed for 30 min (15 min of work), then 45 min more
+        val late = mapOf(2L to Availability(startMs = 30 * 60_000L))
+        assertEquals(4_500_000L, totalMillis(counts, standardOnly, crew, late))
+    }
+
+    @Test
+    fun leavingEarlyLengthensTheEstimate() {
+        val counts = listOf(TypeCount(1, "Standard", 48, 0))
+        val early = mapOf(2L to Availability(endMs = 30 * 60_000L))
+        // 30 min together (30 min of work), then A alone does the other 30 min of work in 60
+        assertEquals(5_400_000L, totalMillis(counts, standardOnly, listOf(pairA, pairB), early))
+    }
+
+    @Test
+    fun interiorTimeFollowsWhoIsThere() {
+        val counts = listOf(TypeCount(1, "Standard", 24, 22))     // 0.5 h interior + 0.5 h exterior
+        val early = mapOf(2L to Availability(endMs = 15 * 60_000L))
+        val crew = listOf(pairA, pairB)
+        assertEquals(6_300_000L, totalMillis(counts, standardOnly, crew, early))
+        assertEquals(2_700_000L, interiorMillis(counts, standardOnly, crew, early))
+    }
+
+    @Test
+    fun availabilityAndCrewMembersSurviveEncoding() {
+        val map = mapOf(
+            2L to Availability(startMs = 1_800_000L),
+            3L to Availability(endMs = 600_000L)
+        )
+        assertEquals(map, AvailabilityCodec.decode(AvailabilityCodec.encode(map)))
+        assertEquals(emptyMap<Long, Availability>(), AvailabilityCodec.decode(""))
+
+        val members = listOf(
+            CrewMember(1, "Me", 24, 22, listOf(TypeCount(1, "Standard", 14, 0))),
+            CrewMember(2, "Sam", 18, 16, listOf(TypeCount(1, "Standard", 5, 0)), 600_000L, 2_400_000L)
+        )
+        assertEquals(members, Crew.decode(Crew.encode(members)))
+        assertEquals(1_800_000L, members[1].presentMs(hour))
+        assertEquals(hour, members[0].presentMs(hour))
+    }
+
+    @Test
+    fun splitFollowsTimePresent() {
+        val planned = listOf(TypeCount(1, "Standard", 30, 0))
+        val split = Crew.split(planned, listOf(pairA, pairB), mapOf(1L to 2 * hour, 2L to hour))
+        assertEquals(listOf(20, 10), split.map { it[0].interior })
+    }
+
+    @Test
+    fun personalPaceUsesTheTimeTheyWereThere() {
+        val members = listOf(
+            CrewMember(1, "Me", 24, 22, listOf(TypeCount(1, "Standard", 20, 0))),
+            CrewMember(2, "Sam", 18, 16, listOf(TypeCount(1, "Standard", 5, 0)), 0L, hour / 2)
+        )
+        val run = Run(
+            jobName = "A", startedAt = 0L, plannedMs = hour, actualMs = hour,
+            interior = 25, exterior = 0, crew = Crew.encode(members)
+        )
+        // Sam did 5 windows in the 30 minutes they were there: 10 an hour
+        assertEquals(10.0, summarize(listOf(run), 2L, 1)!!.overallPace!!, 0.001)
+        // The crew pace stays windows over the run: 25 in an hour
+        assertEquals(25.0, summarize(listOf(run), null, 1)!!.overallPace!!, 0.001)
     }
 }

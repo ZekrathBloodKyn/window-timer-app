@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                     var crewIds by rememberSaveable(
                         stateSaver = listSaver(save = { it }, restore = { it })
                     ) { mutableStateOf(emptyList<Long>()) }
+                    var availability by rememberSaveable { mutableStateOf("") }
 
                     when (screen) {
                         Screen.SETTINGS -> SettingsScreen(onBack = { screen = Screen.TIMER })
@@ -80,6 +81,8 @@ class MainActivity : ComponentActivity() {
                             onRowsChange = { rows = it },
                             crewIds = crewIds,
                             onCrewChange = { crewIds = it },
+                            availability = availability,
+                            onAvailabilityChange = { availability = it },
                         )
                     }
                 }
