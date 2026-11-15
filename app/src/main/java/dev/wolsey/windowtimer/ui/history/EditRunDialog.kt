@@ -114,7 +114,7 @@ fun EditRunDialog(
                     Text("Planned: $plannedText", style = MaterialTheme.typography.bodySmall)
                 }
                 if (crewState.loaded) {
-                    CrewEditor(crewState, types, standard)
+                    CrewEditor(crewState, types, standard, run.startedAt)
                 }
             }
         },

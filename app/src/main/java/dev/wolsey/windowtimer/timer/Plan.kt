@@ -97,10 +97,8 @@ private fun timeToFinish(
             if (from >= a.startMs && (a.endMs == null || from < a.endMs)) s else 0.0
         }
         val next = points.getOrNull(i + 1)
-        if (next == null) {
-            // Nobody left to work would never finish, so fall back to the full-crew time.
+            ?: // Nobody left to work would never finish, so fall back to the full-crew time.
             return if (capacity > 0) from + remaining / capacity else hours * 3_600_000.0
-        }
         val length = (next - from).toDouble()
         if (capacity * length >= remaining) return from + remaining / capacity
         remaining -= capacity * length

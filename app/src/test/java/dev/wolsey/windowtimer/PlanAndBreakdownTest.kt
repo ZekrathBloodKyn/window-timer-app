@@ -555,4 +555,37 @@ class PlanAndBreakdownTest {
         // The crew pace stays windows over the run: 25 in an hour
         assertEquals(25.0, summarize(listOf(run), null, 1)!!.overallPace!!, 0.001)
     }
+
+    @Test
+    fun pickedClockTimesBecomeOffsetsFromTheStart() {
+        val now = 1_000_000_000L
+        val picked = Availability(startAt = now + 30 * 60_000L, endAt = now + 2 * hour)
+        val resolved = picked.resolve(now)
+        assertEquals(30 * 60_000L, resolved.startMs)
+        assertEquals(2 * hour, resolved.endMs)
+
+        // An arrival time that has already passed means from the start; a leave time that
+        // has already passed is ignored rather than ending the run before it begins.
+        val past = Availability(startAt = now - 5_000L, endAt = now - 5_000L).resolve(now)
+        assertEquals(0L, past.startMs)
+        assertEquals(null, past.endMs)
+
+        // Offsets already worked out are left alone.
+        assertEquals(
+            Availability(startMs = 5L, endMs = 9L),
+            Availability(startMs = 5L, endMs = 9L).resolve(now)
+        )
+    }
+
+    @Test
+    fun clockTimesSurviveEncodingAndOldSettingsStillLoad() {
+        val map = mapOf(2L to Availability(startAt = 1_700_000_000_000L, endAt = 1_700_003_600_000L))
+        assertEquals(map, AvailabilityCodec.decode(AvailabilityCodec.encode(map)))
+
+        // The earlier three-part format still reads.
+        assertEquals(
+            mapOf(2L to Availability(startMs = 1_800_000L, endMs = null)),
+            AvailabilityCodec.decode("2:1800000:")
+        )
+    }
 }

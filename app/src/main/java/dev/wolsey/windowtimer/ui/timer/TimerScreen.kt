@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -173,17 +174,26 @@ fun TimerScreen(
 
     val crew = people.filter { it.id in crewIds }
     val crewIdSet = crew.map { it.id }.toSet()
+    // The time now, refreshed twice a minute, for turning picked clock times into offsets.
+    val clockNow by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000)
+            value = System.currentTimeMillis()
+        }
+    }
     val presence = AvailabilityCodec.decode(availability).filterKeys { it in crewIdSet }
+    // As offsets from the timer's start, for the estimate.
+    val offsets = presence.mapValues { it.value.resolve(clockNow) }
     val counts = rows.toCounts()
     val interiorCount = Breakdown.totalInterior(counts)
     val exteriorCount = Breakdown.totalExterior(counts)
-    val total = if (running) serviceTotal else totalMillis(counts, types, crew, presence)
+    val total = if (running) serviceTotal else totalMillis(counts, types, crew, offsets)
     val isStopwatch = if (running) serviceStopwatch else stopwatchMode
     val canStart = isStopwatch || total > 0
 
     // While running, the alerts are the ones the service was started with.
     val plan = remember { IntervalSettings.load(context) }
-    val interiorMs = interiorMillis(counts, types, crew, presence)
+    val interiorMs = interiorMillis(counts, types, crew, offsets)
     val marks = if (running) serviceMarks else buildMarks(total, interiorMs, plan)
 
     val resetChecks = {
@@ -311,6 +321,13 @@ fun TimerScreen(
 
         // Only shown once there's more than one person to choose from.
         if (people.size > 1) {
+            val personTimes = rememberPersonTimes(
+                crew = crew,
+                availability = presence,
+                onChange = { onAvailabilityChange(AvailabilityCodec.encode(it)) },
+                running = running,
+                elapsedMs = elapsed
+            )
             CrewChips(
                 people = people,
                 selectedIds = crewIds,
@@ -318,19 +335,11 @@ fun TimerScreen(
                     onCrewChange(it)
                     resetChecks()
                 },
-                enabled = !running
+                enabled = !running,
+                canEditTimes = personTimes.canEdit,
+                onEditTimes = personTimes.open
             )
             SavedCrewChips(people, crewIds, onCrewChange, enabled = !running)
-        }
-
-        if (crew.size > 1) {
-            AvailabilityRows(
-                crew = crew,
-                availability = presence,
-                onChange = { onAvailabilityChange(AvailabilityCodec.encode(it)) },
-                running = running,
-                elapsedMs = elapsed
-            )
         }
 
         TypeCountRows(
@@ -476,16 +485,24 @@ fun TimerScreen(
             Button(
                 onClick = {
                     PersonStore.saveLastCrew(context, crew.map { it.id })
+
+                    // Fix picked clock times against the real start time.
+                    val startNow = System.currentTimeMillis()
+                    val frozen = presence.mapValues { it.value.resolve(startNow) }
+                    val startTotal = totalMillis(counts, types, crew, frozen)
+                    val startInterior = interiorMillis(counts, types, crew, frozen)
+                    onAvailabilityChange(AvailabilityCodec.encode(frozen))
+
                     ContextCompat.startForegroundService(
                         context,
                         Intent(context, TimerService::class.java)
                             .setAction(TimerService.ACTION_START)
-                            .putExtra(TimerService.EXTRA_TOTAL_MS, total)
+                            .putExtra(TimerService.EXTRA_TOTAL_MS, startTotal)
+                            .putExtra(TimerService.EXTRA_INTERIOR_MS, startInterior)
                             .putExtra(TimerService.EXTRA_JOB_NAME, jobName.trim())
                             .putExtra(TimerService.EXTRA_INTERIOR, interiorCount)
                             .putExtra(TimerService.EXTRA_EXTERIOR, exteriorCount)
                             .putExtra(TimerService.EXTRA_BREAKDOWN, Breakdown.encode(counts))
-                            .putExtra(TimerService.EXTRA_INTERIOR_MS, interiorMs)
                             .putExtra(TimerService.EXTRA_STOPWATCH, isStopwatch)
                     )
                 },
@@ -551,7 +568,7 @@ fun TimerScreen(
                 onAvailabilityChange("")
             },
             onDismiss = { showFinish = false },
-            availability = presence,
+            availability = offsets,
             elapsedMs = finishElapsedMs,
         )
     }

@@ -144,7 +144,7 @@ fun AddRunDialog(
 
                 Text("Windows done", style = MaterialTheme.typography.titleSmall)
                 if (crewState.loaded) {
-                    CrewEditor(crewState, types, standard)
+                    CrewEditor(crewState, types, standard, startedAt)
                 }
             }
         },

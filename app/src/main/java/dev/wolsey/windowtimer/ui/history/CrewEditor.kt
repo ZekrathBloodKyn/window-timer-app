@@ -3,10 +3,9 @@ package dev.wolsey.windowtimer.ui.history
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -15,9 +14,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.wolsey.windowtimer.data.Breakdown
 import dev.wolsey.windowtimer.data.Crew
@@ -33,10 +32,13 @@ import dev.wolsey.windowtimer.ui.timer.SavedCrewChips
 import dev.wolsey.windowtimer.ui.timer.TypeCountRows
 import dev.wolsey.windowtimer.ui.timer.toCounts
 import dev.wolsey.windowtimer.ui.timer.toRows
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * What the Add run and Edit run dialogs are editing: who worked, and how many windows
- * of each type each person did.
+ * What the Add run and Edit run dialogs are editing: who worked, how many windows of each
+ * type each person did, and when anyone arrived late or left early.
  */
 @Stable
 class CrewEditState {
@@ -44,18 +46,18 @@ class CrewEditState {
     var choices by mutableStateOf<List<Person>>(emptyList())   // who can be picked
     var selected by mutableStateOf<List<Long>>(emptyList())    // who worked
     val rows = mutableStateMapOf<Long, List<CountRow>>()       // each person's counts
-    val startText = mutableStateMapOf<Long, String>()          // minutes after the start
-    val endText = mutableStateMapOf<Long, String>()            // minutes after the start
+    val starts = mutableStateMapOf<Long, Long>()               // arrival, ms after the run's start
+    val ends = mutableStateMapOf<Long, Long>()                 // departure, ms after the run's start
 
     fun crewPeople(): List<Person> = selected.mapNotNull { id -> choices.firstOrNull { it.id == id } }
 
-    /** Each selected person with the windows they did. */
+    /** Each selected person with the windows they did and when they worked. */
     fun members(): List<CrewMember> = crewPeople().map { p ->
         CrewMember(
             p.id, p.name, p.interiorPace, p.exteriorPace,
             rows[p.id].orEmpty().toCounts().filter { it.windows > 0 },
-            startMs = (startText[p.id]?.toLongOrNull() ?: 0L) * 60_000L,
-            endMs = endText[p.id]?.toLongOrNull()?.takeIf { it > 0 }?.times(60_000L)
+            startMs = starts[p.id] ?: 0L,
+            endMs = ends[p.id]
         )
     }
 
@@ -64,8 +66,8 @@ class CrewEditState {
         next.filter { it !in selected }.forEach { rows[it] = default }
         selected.filter { it !in next }.forEach {
             rows.remove(it)
-            startText.remove(it)
-            endText.remove(it)
+            starts.remove(it)
+            ends.remove(it)
         }
         selected = next
     }
@@ -108,11 +110,11 @@ class CrewEditState {
             snapshot.isNotEmpty() -> {
                 selected = snapshot.map { it.personId }
                 snapshot.forEach {
-                    if (it.startMs > 0) startText[it.personId] = (it.startMs / 60_000).toString()
-                    it.endMs?.let { end -> endText[it.personId] = (end / 60_000).toString() }
+                    rows[it.personId] = it.counts.toRows().ifEmpty { default }
+                    if (it.startMs > 0) starts[it.personId] = it.startMs
+                    it.endMs?.let { end -> ends[it.personId] = end }
                 }
             }
-
             else -> {
                 selected = listOf(owner.id)
                 rows[owner.id] = Breakdown.resolve(run.breakdown, run.interior, run.exterior, standard)
@@ -136,9 +138,18 @@ fun rememberCrewEditState(run: Run?, people: List<Person>, standard: WindowType?
     return state
 }
 
-/** Crew chips (when there's more than one person to pick) and each person's counts by type. */
+/**
+ * Crew chips (when there's more than one person to pick), each person's counts by type, and
+ * with more than one person on the run, when each arrived and left. [runStartMs] is when the
+ * run started, which the times are measured from.
+ */
 @Composable
-fun CrewEditor(state: CrewEditState, types: List<WindowType>, standard: WindowType?) {
+fun CrewEditor(
+    state: CrewEditState,
+    types: List<WindowType>,
+    standard: WindowType?,
+    runStartMs: Long
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (state.choices.size > 1) {
             CrewChips(
@@ -147,7 +158,9 @@ fun CrewEditor(state: CrewEditState, types: List<WindowType>, standard: WindowTy
                 onChange = { state.setSelected(it, standard) },
                 enabled = true
             )
-            SavedCrewChips(state.choices, state.selected, { state.setSelected(it, standard) }, enabled = true)
+            SavedCrewChips(
+                state.choices, state.selected, { state.setSelected(it, standard) }, enabled = true
+            )
         }
         state.crewPeople().forEach { person ->
             if (state.selected.size > 1) {
@@ -159,26 +172,66 @@ fun CrewEditor(state: CrewEditState, types: List<WindowType>, standard: WindowTy
                 onRowsChange = { state.rows[person.id] = it },
                 enabled = true
             )
-            if (state.selected.size > 1) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = state.startText[person.id].orEmpty(),
-                        onValueChange = { state.startText[person.id] = it.filter(Char::isDigit).take(3) },
-                        label = { Text("Started after (min)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = state.endText[person.id].orEmpty(),
-                        onValueChange = { state.endText[person.id] = it.filter(Char::isDigit).take(3) },
-                        label = { Text("Left after (min)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+            if (state.selected.size > 1 && !person.isOwner) {
+                PresenceTimeRow(
+                    label = "Arrived",
+                    notSet = "from the start",
+                    offsetMs = state.starts[person.id],
+                    runStartMs = runStartMs,
+                    onChange = { offset ->
+                        if (offset == null || offset <= 0L) state.starts.remove(person.id)
+                        else state.starts[person.id] = offset
+                    }
+                )
+                PresenceTimeRow(
+                    label = "Left",
+                    notSet = "stayed to the end",
+                    offsetMs = state.ends[person.id],
+                    runStartMs = runStartMs,
+                    onChange = { offset ->
+                        if (offset == null) state.ends.remove(person.id)
+                        else state.ends[person.id] = offset.coerceAtLeast(60_000L)
+                    }
+                )
             }
         }
+    }
+}
+
+/** A clock time for one person, picked with a time picker. Null means not set. */
+@Composable
+private fun PresenceTimeRow(
+    label: String,
+    notSet: String,
+    offsetMs: Long?,
+    runStartMs: Long,
+    onChange: (Long?) -> Unit
+) {
+    val format = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+    var picking by remember { mutableStateOf(false) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (offsetMs == null) "$label: $notSet"
+            else "$label: ${format.format(Date(runStartMs + offsetMs))}",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = { picking = true }) { Text("Set") }
+        if (offsetMs != null) {
+            TextButton(onClick = { onChange(null) }) { Text("Clear") }
+        }
+    }
+
+    @Suppress("AssignedValueIsNeverRead")
+    if (picking) {
+        TimePickerDialog(
+            initial = runStartMs + (offsetMs ?: 0L),
+            onConfirm = { hour, minute ->
+                picking = false
+                onChange(withTimeOfDay(runStartMs, hour, minute) - runStartMs)
+            },
+            onDismiss = { picking = false }
+        )
     }
 }
