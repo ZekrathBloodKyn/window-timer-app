@@ -112,6 +112,8 @@ fun TimerScreen(
     var serviceTotal by remember { mutableLongStateOf(0L) }
     var serviceMarks by remember { mutableStateOf<List<Mark>>(emptyList()) }
     var stopwatchMode by rememberSaveable { mutableStateOf(false) }
+    // Who has "times unknown" switched on, kept as text so it survives rotation.
+    var unknownText by rememberSaveable { mutableStateOf("") }
     var serviceStopwatch by remember { mutableStateOf(TimerService.stopwatch) }
     var fired by remember { mutableIntStateOf(TimerService.firedCount) }
 
@@ -338,8 +340,6 @@ fun TimerScreen(
 
         // Only shown once there's more than one person to choose from.
         if (people.size > 1) {
-            // Who has "times unknown" switched on, kept as text so it survives rotation.
-            var unknownText by rememberSaveable { mutableStateOf("") }
             val unknownIds = unknownText.split(',').mapNotNull { it.toLongOrNull() }.toSet()
 
             val personTimes = rememberPersonTimes(
@@ -564,6 +564,7 @@ fun TimerScreen(
                     )
                     Alerts.stop()
                     onAvailabilityChange("")
+                    unknownText = ""
                     Toast.makeText(context, "Run discarded", Toast.LENGTH_SHORT).show()
                 }) { Text("Discard") }
             },
@@ -599,6 +600,7 @@ fun TimerScreen(
                 )
                 Alerts.stop()
                 onAvailabilityChange("")
+                unknownText = ""
             },
             onDismiss = { showFinish = false },
             availability = offsets.mapValues { (_, a) ->
