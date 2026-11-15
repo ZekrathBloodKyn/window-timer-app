@@ -340,6 +340,20 @@ fun TimerScreen(
                 onEditTimes = personTimes.open
             )
             SavedCrewChips(people, crewIds, onCrewChange, enabled = !running)
+            // Who has "times unknown" switched on, kept as text so it survives rotation.
+            var unknownText by rememberSaveable { mutableStateOf("") }
+            val unknownIds = unknownText.split(',').mapNotNull { it.toLongOrNull() }.toSet()
+            LiveTimes(
+                crew = crew,
+                availability = presence,
+                onChange = { onAvailabilityChange(AvailabilityCodec.encode(it)) },
+                running = running,
+                elapsedMs = elapsed,
+                unknownIds = unknownIds,
+                onUnknownChange = { id, on ->
+                    unknownText = (if (on) unknownIds + id else unknownIds - id).joinToString(",")
+                }
+            )
         }
 
         TypeCountRows(
