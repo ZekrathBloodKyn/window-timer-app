@@ -32,6 +32,7 @@ class TimerService : Service() {
         const val ACTION_CANCEL = "dev.wolsey.windowtimer.CANCEL"
         const val ACTION_PAUSE = "dev.wolsey.windowtimer.PAUSE"
         const val ACTION_RESUME = "dev.wolsey.windowtimer.RESUME"
+        const val ACTION_RETIME = "dev.wolsey.windowtimer.RETIME"
         const val EXTRA_TOTAL_MS = "total_ms"
         const val EXTRA_JOB_NAME = "job_name"
         const val EXTRA_INTERIOR = "interior"
@@ -112,6 +113,10 @@ class TimerService : Service() {
             ACTION_CANCEL -> stop()
             ACTION_PAUSE -> pause()
             ACTION_RESUME -> resume()
+            ACTION_RETIME -> retime(
+                intent.getLongExtra(EXTRA_TOTAL_MS, 0L),
+                intent.getLongExtra(EXTRA_INTERIOR_MS, 0L)
+            )
 
         }
         return START_NOT_STICKY
@@ -186,6 +191,11 @@ class TimerService : Service() {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "windowtimer:run")
             .apply { acquire(totalMs + MAX_RUN_MS) }
 
+        scheduleRemaining(elapsed)
+    }
+
+    /** Schedules everything still to come, given how much time has elapsed. */
+    private fun scheduleRemaining(elapsed: Long) {
         // Reschedule the alerts that haven't fired yet.
         for (index in firedCount until marks.size) {
             val delay = (marks[index].timeMs - elapsed).coerceAtLeast(0L)
@@ -202,6 +212,26 @@ class TimerService : Service() {
                 NOTIFICATION_ID,
                 buildNotification(if (stopwatch) "Stopwatch running" else "Timer running")
             )
+    }
+
+    /**
+     * Re-estimates mid-run, for example when someone arrives or leaves. Marks that the new
+     * estimate puts in the past are counted as done without sounding, so nothing bursts out.
+     */
+    private fun retime(total: Long, interior: Long) {
+        if (!running || stopwatch || total <= 0 || total == totalMs) return
+        val elapsed = elapsedMs()
+
+        totalMs = total
+        // The same call start() makes to build the marks:
+        marks = buildMarks(total, interior, IntervalSettings.load(this))
+        firedCount = marks.count { it.timeMs <= elapsed }
+
+        if (!paused) {
+            handler.removeCallbacksAndMessages(null)
+            scheduleRemaining(elapsed)
+        }
+        // While paused, resume() schedules from the new marks.
     }
 
     private val overtimeTick = object : Runnable {

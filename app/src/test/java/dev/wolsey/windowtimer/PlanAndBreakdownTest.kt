@@ -17,6 +17,7 @@ import dev.wolsey.windowtimer.data.summarize
 import dev.wolsey.windowtimer.timer.Availability
 import dev.wolsey.windowtimer.timer.AvailabilityCodec
 import dev.wolsey.windowtimer.timer.IntervalPlan
+import dev.wolsey.windowtimer.timer.NOT_HERE_MS
 import dev.wolsey.windowtimer.timer.buildMarks
 import dev.wolsey.windowtimer.timer.formatClock
 import dev.wolsey.windowtimer.timer.formatCountdown
@@ -28,6 +29,8 @@ import dev.wolsey.windowtimer.timer.totalMillis
 import dev.wolsey.windowtimer.ui.history.TimeFramePreset
 import dev.wolsey.windowtimer.ui.history.timeRangeFor
 import junit.framework.TestCase.assertEquals
+import junit.framework.TestCase.assertFalse
+import junit.framework.TestCase.assertTrue
 import org.junit.Assert
 import org.junit.Test
 import java.time.DayOfWeek
@@ -587,5 +590,16 @@ class PlanAndBreakdownTest {
             mapOf(2L to Availability(startMs = 1_800_000L, endMs = null)),
             AvailabilityCodec.decode("2:1800000:")
         )
+    }
+
+    @Test
+    fun joiningLaterIsLeftOutUntilAnArrivalIsRecorded() {
+        val resolved = Availability(joining = true).resolve(1_000L)
+        assertEquals(NOT_HERE_MS, resolved.startMs)
+        assertTrue(resolved.notHere)
+        assertFalse(Availability(startMs = 5L).notHere)
+
+        val map = mapOf(3L to Availability(joining = true))
+        assertEquals(map, AvailabilityCodec.decode(AvailabilityCodec.encode(map)))
     }
 }

@@ -66,6 +66,7 @@ import dev.wolsey.windowtimer.data.store.VisitStore
 import dev.wolsey.windowtimer.timer.AvailabilityCodec
 import dev.wolsey.windowtimer.timer.IntervalSettings
 import dev.wolsey.windowtimer.timer.Mark
+import dev.wolsey.windowtimer.timer.NOT_HERE_MS
 import dev.wolsey.windowtimer.timer.TimerService
 import dev.wolsey.windowtimer.timer.buildMarks
 import dev.wolsey.windowtimer.timer.formatClock
@@ -201,6 +202,22 @@ fun TimerScreen(
         fired = 0
     }
 
+    // While running, re-estimate when someone arrives, leaves, or is marked as joining later.
+    LaunchedEffect(availability, running) {
+        if (running && !isStopwatch) {
+            val newTotal = totalMillis(counts, types, crew, offsets)
+            val newInterior = interiorMillis(counts, types, crew, offsets)
+            if (newTotal > 0) {
+                context.startService(
+                    Intent(context, TimerService::class.java)
+                        .setAction(TimerService.ACTION_RETIME)
+                        .putExtra(TimerService.EXTRA_TOTAL_MS, newTotal)
+                        .putExtra(TimerService.EXTRA_INTERIOR_MS, newInterior)
+                )
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -321,12 +338,20 @@ fun TimerScreen(
 
         // Only shown once there's more than one person to choose from.
         if (people.size > 1) {
+            // Who has "times unknown" switched on, kept as text so it survives rotation.
+            var unknownText by rememberSaveable { mutableStateOf("") }
+            val unknownIds = unknownText.split(',').mapNotNull { it.toLongOrNull() }.toSet()
+
             val personTimes = rememberPersonTimes(
                 crew = crew,
                 availability = presence,
                 onChange = { onAvailabilityChange(AvailabilityCodec.encode(it)) },
                 running = running,
-                elapsedMs = elapsed
+                elapsedMs = elapsed,
+                unknownIds = unknownIds,
+                onUnknownChange = { id, on ->
+                    unknownText = (if (on) unknownIds + id else unknownIds - id).joinToString(",")
+                }
             )
             CrewChips(
                 people = people,
@@ -340,19 +365,13 @@ fun TimerScreen(
                 onEditTimes = personTimes.open
             )
             SavedCrewChips(people, crewIds, onCrewChange, enabled = !running)
-            // Who has "times unknown" switched on, kept as text so it survives rotation.
-            var unknownText by rememberSaveable { mutableStateOf("") }
-            val unknownIds = unknownText.split(',').mapNotNull { it.toLongOrNull() }.toSet()
             LiveTimes(
                 crew = crew,
                 availability = presence,
                 onChange = { onAvailabilityChange(AvailabilityCodec.encode(it)) },
                 running = running,
                 elapsedMs = elapsed,
-                unknownIds = unknownIds,
-                onUnknownChange = { id, on ->
-                    unknownText = (if (on) unknownIds + id else unknownIds - id).joinToString(",")
-                }
+                unknownIds = unknownIds
             )
         }
 
@@ -582,7 +601,9 @@ fun TimerScreen(
                 onAvailabilityChange("")
             },
             onDismiss = { showFinish = false },
-            availability = offsets,
+            availability = offsets.mapValues { (_, a) ->
+                if (a.startMs >= NOT_HERE_MS) a.copy(startMs = finishElapsedMs) else a
+            },
             elapsedMs = finishElapsedMs,
         )
     }
